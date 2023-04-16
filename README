@@ -1,0 +1,109 @@
+tinyquota
+=========
+
+Native quota support on ext4 and xfs greatly simplifies the demands on
+userspace. The quota files are hidden and need no longer be created or
+managed manually. Accounting is automatically enabled at mount time and
+checked automatically during full filesystem checks.
+
+All that is now needed in a complete interface is the ability to read and
+set block and file quotas by user, group and project ID. These tools are
+simple, scripting-friendly wrappers around these operations.
+
+
+quotaget
+--------
+
+To list the block (data) or file (inode) limits and usage on a mounted
+filesystem, run
+
+  quotaget FS (user|group|project) (block|file) [ID]
+
+where FS is the filesystem mount point or block special device. Zero or more
+lines in the format
+
+  ID HARD SOFT USED [TIME]
+
+are written to stdout, each of which only includes the remaining grace time
+if that ID is already over its soft limit. There follows a single line
+showing the configured grace period in the format
+
+  grace TIME
+
+IDs are listed numerically. Limits and usage are reported in bytes or
+inodes. Quota grace times are reported in seconds.
+
+If the optional numeric ID argument is specified, only the limits and usage
+for that ID are printed, together with the grace period. An unprivileged
+user can run quotaget for their own user and group ID.
+
+If FS is specified as a mount point, /proc must be mounted so quotaget can
+traverse /proc/mounts to identify the correct device node for quotactl().
+
+
+quotaset
+--------
+
+To set the block or file limits on a mounted filesystem, run
+
+  quotaset FS (user|group|project) (block|file) ID HARD SOFT
+
+where FS is the filesystem mount point or block special device, ID is a
+decimal number, and HARD and SOFT are the hard and soft limits in bytes for
+block quotas or inodes for file quotas.
+
+To set the quota grace period on a mounted filesystem, run
+
+  quotaset FS (user|group|project) (block|file) grace TIME
+
+where FS is the filesystem mount point or block special device, and TIME is
+the grace period in seconds.
+
+If FS is specified as a mount point, /proc must be mounted so quotaset can
+traverse /proc/mounts to identify the correct device node for quotactl().
+
+
+Notes
+-----
+
+User and group quotas limit filesystem use aggregated by inode owner and
+group. Project IDs are another numeric ID that can be assigned to inodes
+and inherited hierarchically, often used to implement directory quotas.
+
+Pass -O project,quota to mkfs.ext4 or tune2fs to enable user, group and
+project quotas on a new or existing ext4 filesystem. The usrquota, grpquota
+and prjquota mount options are no longer needed.
+
+To set the project ID for a folder DIR, use
+
+  chattr -p ID +P -R DIR
+
+The +P attribute ensures that newly created contents will inherit the
+project ID; -R recurses over the existing contents.
+
+The quotactl() syscall expects block quotas in 1k pages but tracks block
+usage in bytes. These tools read and write all sizes in bytes, but block
+limits are rounded up to the nearest multiple of 1024 bytes by quotaset.
+
+
+Building and installing
+-----------------------
+
+Unpack the source tar.gz file and change to the unpacked directory.
+
+Run 'make' then 'make install' to install quotaget and quotaset in /bin.
+Alternatively, you can set DESTDIR and/or BINDIR to install in a different
+location, or strip and copy the compiled binaries into the correct place
+manually.
+
+Tinyquota is Linux-specific but should build and work out of the box on
+reasonably recent musl/glibc and clang/gcc.
+
+Please report any problems or bugs to Chris Webb <chris@arachsys.com>.
+
+
+Copying
+-------
+
+These utilities were written by Chris Webb <chris@arachsys.com> and are
+distributed as Free Software under the terms of the MIT license in COPYING.
