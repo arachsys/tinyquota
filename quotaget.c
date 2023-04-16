@@ -69,13 +69,13 @@ int main(int argc, char **argv) {
   struct if_dqinfo info;
   char *fs;
 
-  if (argc < 3 || argc > 4) {
+  if (argc < 4 || argc > 5) {
     fprintf(stderr, "\
-Usage: %1$s FS (user|group|project) [ID]\n\n\
+Usage: %s FS (user|group|project) (block|file) [ID]\n\n\
 FS is a block device or mount point. Zero or more lines in the format\n\n\
-  ID BLOCK-HARD BLOCK-SOFT BLOCK-USED FILE-HARD FILE-SOFT FILE-USED\n\n\
+  ID HARD SOFT USED\n\n\
 are written to stdout, followed by a single line in the format\n\n\
-  grace BLOCK-TIME FILE-TIME\n\n\
+  grace TIME\n\n\
 IDs are listed numerically. Limits and usage are reported in bytes or\n\
 inodes. Quota grace times are reported in seconds.\n\
 ", argv[0]);
@@ -84,28 +84,40 @@ inodes. Quota grace times are reported in seconds.\n\
 
   fs = findfs(argv[1]);
 
-  if (argc > 3) {
-    unsigned int id = number(argv[3]);
+  if (strcmp(argv[3], "block") && strcmp(argv[3], "file"))
+    errx(EXIT_FAILURE, "Unknown quota kind: %s", argv[3]);
+
+  if (argc > 4) {
+    unsigned int id = number(argv[4]);
     if (syscall(SYS_quotactl, QCMD(Q_GETQUOTA, type(argv[2])),
           fs, id, &quota) < 0)
       err(EXIT_FAILURE, "quotactl Q_GETQUOTA");
-    printf("%u %llu %llu %llu %llu %llu %llu\n", id,
-      quota.dqb_bhardlimit << 10, quota.dqb_bsoftlimit << 10,
-      quota.dqb_curspace, quota.dqb_ihardlimit, quota.dqb_isoftlimit,
-      quota.dqb_curinodes);
+    if (strcmp(argv[3], "block") == 0)
+      printf("%u %llu %llu %llu\n", id, quota.dqb_bhardlimit << 10,
+        quota.dqb_bsoftlimit << 10, quota.dqb_curspace);
+    if (strcmp(argv[3], "file") == 0)
+      printf("%u %llu %llu %llu\n", id, quota.dqb_ihardlimit,
+        quota.dqb_isoftlimit, quota.dqb_curinodes);
   } else {
     while (syscall(SYS_quotactl, QCMD(Q_GETNEXTQUOTA, type(argv[2])),
-             fs, quota.dqb_id + 1, &quota) >= 0)
-      printf("%u %llu %llu %llu %llu %llu %llu\n", quota.dqb_id,
-        quota.dqb_bhardlimit << 10, quota.dqb_bsoftlimit << 10,
-        quota.dqb_curspace, quota.dqb_ihardlimit, quota.dqb_isoftlimit,
-        quota.dqb_curinodes);
+             fs, quota.dqb_id + 1, &quota) >= 0) {
+      if (strcmp(argv[3], "block") == 0)
+        printf("%u %llu %llu %llu\n", quota.dqb_id,
+          quota.dqb_bhardlimit << 10, quota.dqb_bsoftlimit << 10,
+          quota.dqb_curspace);
+      if (strcmp(argv[3], "file") == 0)
+        printf("%u %llu %llu %llu\n", quota.dqb_id, quota.dqb_ihardlimit,
+          quota.dqb_isoftlimit, quota.dqb_curinodes);
+    }
   }
 
   if (syscall(SYS_quotactl, QCMD(Q_GETINFO, type(argv[2])),
         fs, 0, &info) < 0)
     err(EXIT_FAILURE, "quotactl Q_GETINFO");
-  printf("grace %llu %llu\n", info.dqi_bgrace, info.dqi_igrace);
+  if (strcmp(argv[3], "block") == 0)
+    printf("grace %llu\n", info.dqi_bgrace);
+  if (strcmp(argv[3], "file") == 0)
+    printf("grace %llu\n", info.dqi_igrace);
 
   return EXIT_SUCCESS;
 }
