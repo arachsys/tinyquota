@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <linux/quota.h>
 #include <sys/stat.h>
@@ -73,8 +74,10 @@ int main(int argc, char **argv) {
     fprintf(stderr, "\
 Usage: %s FS (user|group|project) (block|file) [ID]\n\n\
 FS is a block device or mount point. Zero or more lines in the format\n\n\
-  ID HARD SOFT USED\n\n\
-are written to stdout, followed by a single line in the format\n\n\
+  ID HARD SOFT USED [TIME]\n\n\
+are written to stdout, each of which only includes the remaining grace\n\
+time if that ID is already over its soft limit. There follows a single\n\
+line showing the configured grace period in the format\n\n\
   grace TIME\n\n\
 IDs are listed numerically. Limits and usage are reported in bytes or\n\
 inodes. Quota grace times are reported in seconds.\n\
@@ -92,22 +95,38 @@ inodes. Quota grace times are reported in seconds.\n\
     if (syscall(SYS_quotactl, QCMD(Q_GETQUOTA, type(argv[2])),
           fs, id, &quota) < 0)
       err(EXIT_FAILURE, "quotactl Q_GETQUOTA");
-    if (strcmp(argv[3], "block") == 0)
-      printf("%u %llu %llu %llu\n", id, quota.dqb_bhardlimit << 10,
+    if (strcmp(argv[3], "block") == 0) {
+      printf("%u %llu %llu %llu", id, quota.dqb_bhardlimit << 10,
         quota.dqb_bsoftlimit << 10, quota.dqb_curspace);
-    if (strcmp(argv[3], "file") == 0)
-      printf("%u %llu %llu %llu\n", id, quota.dqb_ihardlimit,
+      if (quota.dqb_btime != 0)
+        printf(" %lld", (long long) quota.dqb_btime - time(NULL));
+      putchar('\n');
+    }
+    if (strcmp(argv[3], "file") == 0) {
+      printf("%u %llu %llu %llu", id, quota.dqb_ihardlimit,
         quota.dqb_isoftlimit, quota.dqb_curinodes);
+      if (quota.dqb_itime != 0)
+        printf(" %lld", (long long) quota.dqb_itime - time(NULL));
+      putchar('\n');
+    }
   } else {
     while (syscall(SYS_quotactl, QCMD(Q_GETNEXTQUOTA, type(argv[2])),
              fs, quota.dqb_id + 1, &quota) >= 0) {
-      if (strcmp(argv[3], "block") == 0)
-        printf("%u %llu %llu %llu\n", quota.dqb_id,
+      if (strcmp(argv[3], "block") == 0) {
+        printf("%u %llu %llu %llu", quota.dqb_id,
           quota.dqb_bhardlimit << 10, quota.dqb_bsoftlimit << 10,
           quota.dqb_curspace);
-      if (strcmp(argv[3], "file") == 0)
-        printf("%u %llu %llu %llu\n", quota.dqb_id, quota.dqb_ihardlimit,
-          quota.dqb_isoftlimit, quota.dqb_curinodes);
+        if (quota.dqb_btime != 0)
+          printf(" %lld", (long long) quota.dqb_btime - time(NULL));
+        putchar('\n');
+      }
+      if (strcmp(argv[3], "file") == 0) {
+        printf("%u %llu %llu %llu", quota.dqb_id,
+          quota.dqb_ihardlimit, quota.dqb_isoftlimit, quota.dqb_curinodes);
+        if (quota.dqb_itime != 0)
+          printf(" %lld", (long long) quota.dqb_itime - time(NULL));
+        putchar('\n');
+      }
     }
   }
 
