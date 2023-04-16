@@ -1,12 +1,47 @@
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
+#include <mntent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <linux/quota.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
+
+char *findfs(char *path) {
+  char *canon, *special = NULL;
+  struct mntent *entry;
+  struct stat info;
+  FILE *mounts;
+
+  if (stat(path, &info) < 0)
+    err(EXIT_FAILURE, "%s", path);
+  if (S_ISBLK(info.st_mode))
+    return path;
+
+  if (S_ISDIR(info.st_mode)) {
+    if ((canon = realpath(path, NULL)) == NULL)
+      err(EXIT_FAILURE, "%s", path);
+    if ((mounts = setmntent("/proc/mounts", "r")) == NULL)
+      err(EXIT_FAILURE, "/proc/mounts");
+
+    while ((entry = getmntent(mounts)))
+      if (strcmp(entry->mnt_dir, canon) == 0) {
+        free(special);
+        special = strdup(entry->mnt_fsname);
+        if (special == NULL)
+          err(EXIT_FAILURE, "strdup");
+      }
+    endmntent(mounts);
+    free(canon);
+  }
+
+  if (special)
+    return special;
+  errx(EXIT_FAILURE, "%s is not a mounted filesystem", path);
+}
 
 unsigned long long number(const char *string) {
   unsigned long long value;
@@ -32,6 +67,7 @@ int type(const char *name) {
 int main(int argc, char **argv) {
   struct if_nextdqblk quota = { .dqb_id = -1 };
   struct if_dqinfo info;
+  char *fs;
 
   if (argc < 3 || argc > 4) {
     fprintf(stderr, "\
@@ -46,10 +82,12 @@ inodes. Quota grace times are reported in seconds.\n\
     return 64;
   }
 
+  fs = findfs(argv[1]);
+
   if (argc > 3) {
     unsigned int id = number(argv[3]);
     if (syscall(SYS_quotactl, QCMD(Q_GETQUOTA, type(argv[2])),
-          argv[1], id, &quota) < 0)
+          fs, id, &quota) < 0)
       err(EXIT_FAILURE, "quotactl Q_GETQUOTA");
     printf("%u %llu %llu %llu %llu %llu %llu\n", id,
       quota.dqb_bhardlimit << 10, quota.dqb_bsoftlimit << 10,
@@ -57,7 +95,7 @@ inodes. Quota grace times are reported in seconds.\n\
       quota.dqb_curinodes);
   } else {
     while (syscall(SYS_quotactl, QCMD(Q_GETNEXTQUOTA, type(argv[2])),
-             argv[1], quota.dqb_id + 1, &quota) >= 0)
+             fs, quota.dqb_id + 1, &quota) >= 0)
       printf("%u %llu %llu %llu %llu %llu %llu\n", quota.dqb_id,
         quota.dqb_bhardlimit << 10, quota.dqb_bsoftlimit << 10,
         quota.dqb_curspace, quota.dqb_ihardlimit, quota.dqb_isoftlimit,
@@ -65,7 +103,7 @@ inodes. Quota grace times are reported in seconds.\n\
   }
 
   if (syscall(SYS_quotactl, QCMD(Q_GETINFO, type(argv[2])),
-        argv[1], 0, &info) < 0)
+        fs, 0, &info) < 0)
     err(EXIT_FAILURE, "quotactl Q_GETINFO");
   printf("grace %llu %llu\n", info.dqi_bgrace, info.dqi_igrace);
 
