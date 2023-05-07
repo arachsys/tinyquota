@@ -10,6 +10,7 @@
 #include <linux/quota.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/sysmacros.h>
 
 char *findfs(char *path) {
   char *canon, *special = NULL;
@@ -39,9 +40,33 @@ char *findfs(char *path) {
     free(canon);
   }
 
-  if (special)
+  if (special == NULL)
+    errx(EXIT_FAILURE, "%s is not a mounted filesystem", path);
+  if (strcmp(special, "/dev/root") != 0)
     return special;
-  errx(EXIT_FAILURE, "%s is not a mounted filesystem", path);
+
+  if (asprintf(&path, "/sys/dev/block/%u:%u",
+        major(info.st_dev), minor(info.st_dev)) < 0)
+    err(EXIT_FAILURE, "asprintf");
+  if ((canon = realpath(path, NULL)) == NULL)
+    err(EXIT_FAILURE, "%s", path);
+  free(special);
+  free(path);
+
+  if ((special = strrchr(canon, '/')) == NULL)
+    special = canon;
+  for (size_t i = 0; special[i] != 0; i++)
+    if (special[i] == '!')
+      special[i] = '/';
+  if (asprintf(&special, "/dev/%s", special) < 0)
+    err(EXIT_FAILURE, "asprintf");
+  free(canon);
+
+  if (stat(special, &info) < 0)
+    err(EXIT_FAILURE, "%s", special);
+  if (S_ISBLK(info.st_mode))
+    return special;
+  errx(EXIT_FAILURE, "%s is not a valid block device", special);
 }
 
 unsigned long long number(const char *string) {

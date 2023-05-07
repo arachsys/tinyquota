@@ -39,6 +39,8 @@ user can run quotaget for their own user and group ID.
 
 If FS is specified as a mount point, /proc must be mounted so quotaget can
 traverse /proc/mounts to identify the correct device node for quotactl().
+Where FS is the root filesystem, /sys is also required for translating the
+/dev/root pseudo-device into a real device node path.
 
 
 quotaset
@@ -61,6 +63,8 @@ the grace period in seconds.
 
 If FS is specified as a mount point, /proc must be mounted so quotaset can
 traverse /proc/mounts to identify the correct device node for quotactl().
+Where FS is the root filesystem, /sys is also required for translating the
+/dev/root pseudo-device into a real device node path.
 
 
 Notes
